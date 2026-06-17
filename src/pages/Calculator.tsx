@@ -7,6 +7,7 @@ import PlanTabs from '@/components/PlanTabs';
 import AllocationPieChart from '@/components/AllocationPieChart';
 import ReturnBarChart from '@/components/ReturnBarChart';
 import RatioSlider from '@/components/RatioSlider';
+import WealthProjection from '@/components/WealthProjection';
 import { useAssetStore } from '@/store/useAssetStore';
 
 export default function Calculator() {
@@ -102,6 +103,10 @@ export default function Calculator() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
           <AssetConfigPanel />
           <RatioSlider />
+        </div>
+
+        <div className="mb-6">
+          <WealthProjection />
         </div>
 
         <footer className="text-center py-8 text-slate-500 text-sm">

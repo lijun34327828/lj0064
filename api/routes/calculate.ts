@@ -1,5 +1,13 @@
 import { Router, type Request, type Response } from 'express'
-import type { AssetItem, AssetCategory, AllocationPlan, IncomeResult } from '../../shared/types/index.js'
+import type {
+  AssetItem,
+  AssetCategory,
+  AllocationPlan,
+  IncomeResult,
+  ProjectionResult,
+  ProjectionYearData,
+  PlanType,
+} from '../../shared/types/index.js'
 
 const router = Router()
 
@@ -216,6 +224,118 @@ router.post('/api/calculate/custom', (req: Request, res: Response): void => {
       expectedMonthlyReturn: returns.monthlyReturn,
       allocations: customAllocations,
     },
+  })
+})
+
+function calculateProjection(
+  assets: AssetItem[],
+  totalInvestment: number,
+  years: number
+): ProjectionResult {
+  const planTypes: PlanType[] = ['conservative', 'stable', 'aggressive']
+  const initialPrincipal = totalInvestment * 10000
+
+  let annualCashFlow = 0
+  assets.forEach((asset) => {
+    if (asset.selected) {
+      const monthlyCashFlow = (asset.monthlyIncome || 0) - (asset.monthlyExpense || 0)
+      annualCashFlow += monthlyCashFlow * 12
+    }
+  })
+
+  const planReturns: Record<PlanType, number> = {
+    conservative: 0,
+    stable: 0,
+    aggressive: 0,
+  }
+
+  planTypes.forEach((planType) => {
+    const allocations = planAllocations[planType]
+    const returns = calculateExpectedReturns(totalInvestment, allocations, assets)
+    planReturns[planType] = returns.annualReturn
+  })
+
+  const yearData: ProjectionYearData[] = []
+  const currentAssets: Record<PlanType, number> = {
+    conservative: initialPrincipal,
+    stable: initialPrincipal,
+    aggressive: initialPrincipal,
+  }
+
+  const doubleYears: Record<PlanType, number | null> = {
+    conservative: null,
+    stable: null,
+    aggressive: null,
+  }
+
+  yearData.push({
+    year: 0,
+    conservative: currentAssets.conservative,
+    stable: currentAssets.stable,
+    aggressive: currentAssets.aggressive,
+  })
+
+  for (let i = 1; i <= years; i++) {
+    planTypes.forEach((planType) => {
+      const returnRate = initialPrincipal > 0 ? planReturns[planType] / initialPrincipal : 0
+      const yearReturn = currentAssets[planType] * returnRate
+      currentAssets[planType] = currentAssets[planType] + yearReturn + annualCashFlow
+
+      if (doubleYears[planType] === null && currentAssets[planType] >= initialPrincipal * 2) {
+        doubleYears[planType] = i
+      }
+    })
+
+    yearData.push({
+      year: i,
+      conservative: currentAssets.conservative,
+      stable: currentAssets.stable,
+      aggressive: currentAssets.aggressive,
+    })
+  }
+
+  const finalAssets: Record<PlanType, number> = {
+    conservative: currentAssets.conservative,
+    stable: currentAssets.stable,
+    aggressive: currentAssets.aggressive,
+  }
+
+  const totalProfit: Record<PlanType, number> = {
+    conservative: finalAssets.conservative - initialPrincipal - annualCashFlow * years,
+    stable: finalAssets.stable - initialPrincipal - annualCashFlow * years,
+    aggressive: finalAssets.aggressive - initialPrincipal - annualCashFlow * years,
+  }
+
+  return {
+    years: yearData,
+    finalAssets,
+    totalProfit,
+    doubleYears,
+  }
+}
+
+router.post('/api/calculate/projection', (req: Request, res: Response): void => {
+  const { assets, years } = req.body as {
+    assets: AssetItem[]
+    years: number
+  }
+
+  if (!assets || !Array.isArray(assets) || typeof years !== 'number' || years < 1 || years > 30) {
+    res.json({
+      success: false,
+      data: null,
+    })
+    return
+  }
+
+  const selectedAssets = assets.filter((a) => a.selected)
+  const totalInvestment = selectedAssets.reduce((sum, a) => sum + (a.value || 0), 0)
+
+  const result = calculateProjection(assets, totalInvestment, years)
+
+  res.json({
+    success: true,
+    data: result,
   })
 })
 

@@ -29,3 +29,17 @@ export interface IncomeResult {
   annualCashFlow: number;
   isSurplus: boolean;
 }
+
+export interface ProjectionYearData {
+  year: number;
+  conservative: number;
+  stable: number;
+  aggressive: number;
+}
+
+export interface ProjectionResult {
+  years: ProjectionYearData[];
+  finalAssets: Record<PlanType, number>;
+  totalProfit: Record<PlanType, number>;
+  doubleYears: Record<PlanType, number | null>;
+}

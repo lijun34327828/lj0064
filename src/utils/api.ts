@@ -1,4 +1,11 @@
-import type { AssetCategory, AssetItem, AllocationPlan, IncomeResult, PlanType } from '@/types';
+import type {
+  AssetCategory,
+  AssetItem,
+  AllocationPlan,
+  IncomeResult,
+  PlanType,
+  ProjectionResult,
+} from '@/types';
 
 const API_BASE = '/api';
 
@@ -190,4 +197,114 @@ export async function calculateCustomAllocation(
       allocations: customAllocations,
     };
   }
+}
+
+export async function calculateProjection(
+  assets: AssetItem[],
+  years: number
+): Promise<ProjectionResult> {
+  try {
+    const response = await fetch(`${API_BASE}/calculate/projection`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ assets, years }),
+    });
+    const data = (await response.json()) as ApiResponse<ProjectionResult>;
+    if (data.success) {
+      return data.data;
+    }
+    throw new Error('Failed to calculate projection');
+  } catch {
+    return calculateProjectionLocal(assets, years);
+  }
+}
+
+function calculateProjectionLocal(assets: AssetItem[], years: number): ProjectionResult {
+  const planTypes: PlanType[] = ['conservative', 'stable', 'aggressive'];
+  const selectedAssets = assets.filter((a) => a.selected);
+  const totalInvestment = selectedAssets.reduce((sum, a) => sum + a.value, 0);
+  const initialPrincipal = totalInvestment * 10000;
+
+  const defaultAllocations: Record<PlanType, Record<AssetCategory, number>> = {
+    conservative: { real_estate: 50, fund: 25, private_enterprise: 10, collection: 15 },
+    stable: { real_estate: 35, fund: 35, private_enterprise: 15, collection: 15 },
+    aggressive: { real_estate: 20, fund: 40, private_enterprise: 25, collection: 15 },
+  };
+
+  let annualCashFlow = 0;
+  selectedAssets.forEach((asset) => {
+    const monthlyCashFlow = asset.monthlyIncome - asset.monthlyExpense;
+    annualCashFlow += monthlyCashFlow * 12;
+  });
+
+  const calculateAnnualReturn = (allocations: Record<AssetCategory, number>) => {
+    return assets.reduce((total, asset) => {
+      const allocationAmount = (initialPrincipal * allocations[asset.category]) / 100;
+      return total + (allocationAmount * asset.expectedReturn) / 100;
+    }, 0);
+  };
+
+  const planReturns: Record<PlanType, number> = {
+    conservative: calculateAnnualReturn(defaultAllocations.conservative),
+    stable: calculateAnnualReturn(defaultAllocations.stable),
+    aggressive: calculateAnnualReturn(defaultAllocations.aggressive),
+  };
+
+  const yearData = [];
+  const currentAssets: Record<PlanType, number> = {
+    conservative: initialPrincipal,
+    stable: initialPrincipal,
+    aggressive: initialPrincipal,
+  };
+
+  const doubleYears: Record<PlanType, number | null> = {
+    conservative: null,
+    stable: null,
+    aggressive: null,
+  };
+
+  yearData.push({
+    year: 0,
+    conservative: currentAssets.conservative,
+    stable: currentAssets.stable,
+    aggressive: currentAssets.aggressive,
+  });
+
+  for (let i = 1; i <= years; i++) {
+    planTypes.forEach((planType) => {
+      const returnRate = initialPrincipal > 0 ? planReturns[planType] / initialPrincipal : 0;
+      const yearReturn = currentAssets[planType] * returnRate;
+      currentAssets[planType] = currentAssets[planType] + yearReturn + annualCashFlow;
+
+      if (doubleYears[planType] === null && currentAssets[planType] >= initialPrincipal * 2) {
+        doubleYears[planType] = i;
+      }
+    });
+
+    yearData.push({
+      year: i,
+      conservative: currentAssets.conservative,
+      stable: currentAssets.stable,
+      aggressive: currentAssets.aggressive,
+    });
+  }
+
+  const finalAssets: Record<PlanType, number> = {
+    conservative: currentAssets.conservative,
+    stable: currentAssets.stable,
+    aggressive: currentAssets.aggressive,
+  };
+
+  const totalProfit: Record<PlanType, number> = {
+    conservative: finalAssets.conservative - initialPrincipal - annualCashFlow * years,
+    stable: finalAssets.stable - initialPrincipal - annualCashFlow * years,
+    aggressive: finalAssets.aggressive - initialPrincipal - annualCashFlow * years,
+  };
+
+  return {
+    years: yearData,
+    finalAssets,
+    totalProfit,
+    doubleYears,
+  };
 }
