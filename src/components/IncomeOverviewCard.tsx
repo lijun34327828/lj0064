@@ -3,11 +3,14 @@ import StatCard from './StatCard';
 import { useAssetStore } from '@/store/useAssetStore';
 
 function formatNumber(num: number): string {
+  if (typeof num !== 'number' || isNaN(num) || !isFinite(num)) {
+    return '0';
+  }
   return num.toLocaleString('zh-CN');
 }
 
 export default function IncomeOverviewCard() {
-  const { incomeResult } = useAssetStore();
+  const incomeResult = useAssetStore((state) => state.incomeResult);
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

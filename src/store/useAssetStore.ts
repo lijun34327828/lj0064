@@ -1,6 +1,13 @@
 import { create } from 'zustand';
 import type { AssetCategory, AssetItem, PlanType, AllocationPlan, IncomeResult } from '@/types';
 
+function safeNumber(value: number, fallback: number = 0): number {
+  if (typeof value !== 'number' || isNaN(value) || !isFinite(value)) {
+    return fallback;
+  }
+  return value;
+}
+
 const defaultAssets: AssetItem[] = [
   {
     category: 'real_estate',
@@ -111,9 +118,10 @@ export const useAssetStore = create<AssetState>((set, get) => ({
   },
 
   updateAssetValue: (category, field, value) => {
+    const safeValue = safeNumber(value);
     set((state) => ({
       assets: state.assets.map((asset) =>
-        asset.category === category ? { ...asset, [field]: value } : asset
+        asset.category === category ? { ...asset, [field]: safeValue } : asset
       ),
     }));
     get().calculateIncome();
@@ -141,41 +149,47 @@ export const useAssetStore = create<AssetState>((set, get) => ({
 
   calculateIncome: () => {
     const selectedAssets = get().getSelectedAssets();
-    const monthlyFixedIncome = selectedAssets.reduce((sum, a) => sum + a.monthlyIncome, 0);
-    const monthlyFixedExpense = selectedAssets.reduce((sum, a) => sum + a.monthlyExpense, 0);
-    const monthlyCashFlow = monthlyFixedIncome - monthlyFixedExpense;
-    const annualCashFlow = monthlyCashFlow * 12;
+    const monthlyFixedIncome = selectedAssets.reduce(
+      (sum, a) => safeNumber(sum) + safeNumber(a.monthlyIncome),
+      0
+    );
+    const monthlyFixedExpense = selectedAssets.reduce(
+      (sum, a) => safeNumber(sum) + safeNumber(a.monthlyExpense),
+      0
+    );
+    const monthlyCashFlow = safeNumber(monthlyFixedIncome) - safeNumber(monthlyFixedExpense);
+    const annualCashFlow = safeNumber(monthlyCashFlow) * 12;
 
     set({
       incomeResult: {
-        monthlyFixedIncome,
-        monthlyFixedExpense,
-        monthlyCashFlow,
-        annualCashFlow,
-        isSurplus: monthlyCashFlow >= 0,
+        monthlyFixedIncome: safeNumber(monthlyFixedIncome),
+        monthlyFixedExpense: safeNumber(monthlyFixedExpense),
+        monthlyCashFlow: safeNumber(monthlyCashFlow),
+        annualCashFlow: safeNumber(annualCashFlow),
+        isSurplus: safeNumber(monthlyCashFlow) >= 0,
       },
     });
   },
 
   calculatePlans: () => {
     const { assets } = get();
-    const totalInvestment = get().getTotalInvestment() * 10000;
+    const totalInvestment = safeNumber(get().getTotalInvestment()) * 10000;
 
     const calculateReturn = (allocations: Record<AssetCategory, number>) => {
       return assets.reduce((total, asset) => {
-        const allocationAmount = (totalInvestment * allocations[asset.category]) / 100;
-        return total + (allocationAmount * asset.expectedReturn) / 100;
+        const allocationAmount = (safeNumber(totalInvestment) * safeNumber(allocations[asset.category])) / 100;
+        return safeNumber(total) + (safeNumber(allocationAmount) * safeNumber(asset.expectedReturn)) / 100;
       }, 0);
     };
 
     set((state) => {
       const newPlans = { ...state.plans };
       (Object.keys(newPlans) as PlanType[]).forEach((planType) => {
-        const annualReturn = calculateReturn(newPlans[planType].allocations);
+        const annualReturn = safeNumber(calculateReturn(newPlans[planType].allocations));
         newPlans[planType] = {
           ...newPlans[planType],
           expectedAnnualReturn: annualReturn,
-          expectedMonthlyReturn: annualReturn / 12,
+          expectedMonthlyReturn: safeNumber(annualReturn / 12),
         };
       });
       return { plans: newPlans };
@@ -183,7 +197,7 @@ export const useAssetStore = create<AssetState>((set, get) => ({
   },
 
   getTotalInvestment: () => {
-    return get().getSelectedAssets().reduce((sum, a) => sum + a.value, 0);
+    return get().getSelectedAssets().reduce((sum, a) => safeNumber(sum) + safeNumber(a.value), 0);
   },
 
   getSelectedAssets: () => {

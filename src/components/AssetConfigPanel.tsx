@@ -1,6 +1,17 @@
 import { useAssetStore } from '@/store/useAssetStore';
 import type { AssetItem } from '@/types';
 
+function sanitizeNumberInput(input: string, fallback: number = 0): number {
+  if (input === '' || input === null || input === undefined) {
+    return fallback;
+  }
+  const num = Number(input);
+  if (isNaN(num) || !isFinite(num)) {
+    return fallback;
+  }
+  return num;
+}
+
 interface InputFieldProps {
   label: string;
   value: number;
@@ -9,15 +20,22 @@ interface InputFieldProps {
 }
 
 function InputField({ label, value, suffix, onChange }: InputFieldProps) {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const rawValue = e.target.value;
+    const sanitizedValue = sanitizeNumberInput(rawValue, value);
+    onChange(sanitizedValue);
+  };
+
   return (
     <div>
       <label className="block text-sm text-slate-400 mb-2">{label}</label>
       <div className="relative">
         <input
           type="number"
-          value={value}
-          onChange={(e) => onChange(Number(e.target.value))}
+          value={isFinite(value) ? value : ''}
+          onChange={handleChange}
           className="input-field pr-12"
+          step="any"
         />
         <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm">
           {suffix}
@@ -28,7 +46,7 @@ function InputField({ label, value, suffix, onChange }: InputFieldProps) {
 }
 
 export default function AssetConfigPanel() {
-  const { assets, updateAssetValue, getSelectedAssets } = useAssetStore();
+  const { updateAssetValue, getSelectedAssets } = useAssetStore();
   const selectedAssets = getSelectedAssets();
 
   if (selectedAssets.length === 0) {
